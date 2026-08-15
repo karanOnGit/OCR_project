@@ -1,0 +1,58 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Automated Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Test Suite
+        env:
+          APP_ENV: test
+          DEBUG: "True"
+          UPLOAD_DIR: uploads
+          MAX_FILE_SIZE_MB: 10
+          DATABASE_URL: sqlite:///./test_jobs.db
+          DEFAULT_GOOGLE_DOC_ID: 1Fv5GiS0iK3KJOQSHQB5gbASmaHEMZTUZo2TC_Fx14Hk
+        run: |
+          pytest -v
+
+  deploy:
+    name: Trigger Render Deployment
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to Render via Deploy Hook
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
+            echo "Triggering Render deployment..."
+            curl -fsSL -X POST "$RENDER_DEPLOY_HOOK"
+            echo "Deployment webhook triggered successfully."
+          else
+            echo "RENDER_DEPLOY_HOOK_URL secret not set. Skipping webhook trigger (Render auto-deploys from GitHub if enabled)."
+          fi
