@@ -1,4 +1,3 @@
-from app.services.storage_service import StorageService
 from app.services.google_docs_service import (
     BaseGoogleDocsService,
     GoogleDocsService,
@@ -7,7 +6,6 @@ from app.services.google_docs_service import (
 )
 
 __all__ = [
-    "StorageService",
     "BaseGoogleDocsService",
     "GoogleDocsService",
     "MockGoogleDocsService",

@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline - AWS EC2
 
 on:
   push:
@@ -38,21 +38,41 @@ jobs:
         run: |
           pytest -v
 
-  deploy:
-    name: Trigger Render Deployment
+  deploy-ec2:
+    name: Deploy to AWS EC2 (3.108.215.246)
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to Render via Deploy Hook
-        env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      - name: Check for EC2 SSH Secret
+        id: check_secret
         run: |
-          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
-            echo "Triggering Render deployment..."
-            curl -fsSL -X POST "$RENDER_DEPLOY_HOOK"
-            echo "Deployment webhook triggered successfully."
+          if [ -n "${{ secrets.EC2_SSH_KEY }}" ]; then
+            echo "has_secret=true" >> $GITHUB_OUTPUT
           else
-            echo "RENDER_DEPLOY_HOOK_URL secret not set. Skipping webhook trigger (Render auto-deploys from GitHub if enabled)."
+            echo "has_secret=false" >> $GITHUB_OUTPUT
+            echo "EC2_SSH_KEY secret not found in repository. Skipping automatic SSH deploy."
           fi
+
+      - name: Deploy to EC2 via SSH
+        if: steps.check_secret.outputs.has_secret == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: "3.108.215.246"
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "Pulling latest code on EC2..."
+            if [ -d "$HOME/CaptureBackend" ]; then
+              cd "$HOME/CaptureBackend"
+            elif [ -d "/var/www/CaptureBackend" ]; then
+              cd "/var/www/CaptureBackend"
+            fi
+            git pull origin main
+            if [ -f "venv/bin/activate" ]; then
+              source venv/bin/activate
+            fi
+            pip install -r requirements.txt
+            sudo systemctl restart capture-backend || sudo systemctl restart ocr-backend || true
+            echo "Deployment completed on EC2."

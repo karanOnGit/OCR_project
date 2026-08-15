@@ -1,6 +1,8 @@
-import logging
 from datetime import datetime, timezone
+import logging
+from typing import Optional
 import uuid
+
 from fastapi import APIRouter, Depends, status
 
 from app.api.deps import get_google_docs_service_dep
@@ -18,8 +20,8 @@ router = APIRouter(tags=["Google Docs Integration"])
     "/update-google-doc",
     response_model=GoogleDocsResponse,
     status_code=status.HTTP_200_OK,
-    summary="Update Google Document with direct ML Kit text",
-    description="Directly appends extracted OCR text from the Flutter ML Kit on-device scanner into the target Google Document.",
+    summary="Update Google Document & Sync to Supabase",
+    description="Receives extracted on-device OCR text, appends it to the Google Document, and automatically persists the record in Supabase.",
 )
 async def update_google_doc(
     request: GoogleDocsRequest,
@@ -36,33 +38,40 @@ async def update_google_doc(
     doc_id = request.documentId or settings.DEFAULT_GOOGLE_DOC_ID
 
     # Format text with title header if provided
-    content_to_append = request.text.strip()
-    if request.title:
-        content_to_append = f"### {request.title}\n{content_to_append}"
+    text_body = request.text.strip()
+    if request.title and request.title.strip():
+        formatted_content = f"\n=== {request.title.strip()} ===\n{text_body}\n"
+    else:
+        formatted_content = f"\n{text_body}\n"
 
-    logger.info(f"Appending {len(content_to_append)} chars to Google Doc '{doc_id}'")
+    logger.info(f"Appending text to Google Doc '{doc_id}' (title: '{request.title}')")
     result = await google_docs_service.update_document(
         document_id=doc_id,
-        text=content_to_append,
+        text=formatted_content,
     )
 
     resolved_id = result.get("documentId", doc_id)
+    supabase_synced = False
 
-    # Optional: Sync to Supabase table
+    # Sync everything received to Supabase
     try:
         from app.core.supabase import get_supabase_client
         supabase = get_supabase_client()
         if supabase:
-            supabase.table("jobs").upsert({
+            now_iso = datetime.now(timezone.utc).isoformat()
+            job_record = {
                 "id": str(uuid.uuid4()),
-                "original_filename": request.title or "mlkit_extracted_doc",
-                "image_path": "on_device_mlkit",
+                "original_filename": request.title or "Mobile ML Kit Capture",
+                "image_path": f"gdoc://{resolved_id}",
                 "status": "completed",
                 "extracted_text": request.text,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }).execute()
-            logger.info("Synced ML Kit text record to Supabase")
+                "error": None,
+                "created_at": now_iso,
+                "updated_at": now_iso,
+            }
+            supabase.table("jobs").upsert(job_record).execute()
+            supabase_synced = True
+            logger.info("Successfully synced capture record to Supabase")
     except Exception as err:
         logger.warning(f"Supabase sync warning: {err}")
 
@@ -70,5 +79,6 @@ async def update_google_doc(
         success=True,
         documentId=resolved_id,
         message="Document updated successfully",
-        charactersAppended=len(content_to_append),
+        charactersAppended=len(formatted_content),
+        supabaseSynced=supabase_synced,
     )
