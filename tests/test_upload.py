@@ -46,3 +46,27 @@ def test_upload_missing_file_payload(client):
     data = response.json()
     assert data["success"] is False
     assert data["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_upload_batch_auto_process_and_sync(client, sample_image_bytes):
+    response = client.post(
+        "/api/upload-batch",
+        files=[
+            ("files", ("page1.png", sample_image_bytes, "image/png")),
+            ("files", ("page2.png", sample_image_bytes, "image/png")),
+        ],
+        data={
+            "documentId": "1Fv5GiS0iK3KJOQSHQB5gbASmaHEMZTUZo2TC_Fx14Hk",
+            "auto_process": "true",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["total"] == 2
+    assert data["completed"] == 2
+    assert data["documentId"] == "1Fv5GiS0iK3KJOQSHQB5gbASmaHEMZTUZo2TC_Fx14Hk"
+    assert len(data["jobs"]) == 2
+    assert data["jobs"][0]["status"] == "completed"
+    assert data["jobs"][1]["status"] == "completed"
+
