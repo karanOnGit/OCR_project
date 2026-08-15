@@ -187,7 +187,33 @@ The interactive documentation will be available at:
 
 ---
 
-## 📡 API Endpoints
+## ☁️ Deploying to Render (onrender.com)
+
+This backend is pre-configured for instant deployment on [Render](https://render.com).
+
+### Option A: Deploy with Docker (Recommended - includes native Tesseract OCR)
+
+1. Push your code to GitHub.
+2. Go to the [Render Dashboard](https://dashboard.render.com/) and click **New > Web Service**.
+3. Connect your repository `karanOnGit/OCR_project`.
+4. Choose **Docker** as the Environment.
+5. Render will automatically detect the [Dockerfile](file:///Users/cv/Documents/CaptureBackend/Dockerfile).
+6. Set the Environment Variables in the Render Dashboard:
+   - `APP_ENV`: `production`
+   - `DEBUG`: `False`
+   - `SUPABASE_URL`: `https://idusmcrgaewkzqdyvsby.supabase.co`
+   - `SUPABASE_KEY`: `sb_publishable_...`
+   - (Optional) `DATABASE_URL`: `postgresql://...` (if using Render PostgreSQL)
+7. Click **Create Web Service**.
+
+### Option B: Deploy with Python Native Environment
+
+1. In Render, select **Python 3** as the Environment.
+2. **Build Command**: `./build.sh` (or `pip install -r requirements.txt`)
+3. **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+4. Add your Environment Variables and click **Create Web Service**.
+
+---
 
 ### 1. Upload Image
 `POST /api/upload` (multipart/form-data)
