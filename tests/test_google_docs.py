@@ -1,68 +1,55 @@
-def test_update_google_doc_success(client, sample_image_bytes):
-    # Upload and process an image
-    upload_res = client.post(
-        "/api/upload",
-        files={"file": ("contract.png", sample_image_bytes, "image/png")},
-    )
-    job_id = upload_res.json()["jobId"]
-    client.post("/api/process", json={"jobId": job_id})
-
-    # Update Google Doc
+def test_update_google_doc_direct_text_success(client):
     doc_id = "1A2B3C4D5E6F7G8H9I0J"
+    text_content = "Extracted OCR text directly from Flutter ML Kit."
     response = client.post(
         "/api/update-google-doc",
-        json={"jobId": job_id, "documentId": doc_id},
+        json={
+            "documentId": doc_id,
+            "text": text_content,
+            "title": "Page 1",
+        },
     )
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
-    assert data["jobId"] == job_id
     assert data["documentId"] == doc_id
     assert data["message"] == "Document updated successfully"
+    assert data["charactersAppended"] > 0
 
 
-def test_update_google_doc_job_not_processed_yet(client, sample_image_bytes):
-    # Upload without processing
-    upload_res = client.post(
-        "/api/upload",
-        files={"file": ("notes.png", sample_image_bytes, "image/png")},
-    )
-    job_id = upload_res.json()["jobId"]
-
+def test_update_google_doc_default_document_id(client):
     response = client.post(
         "/api/update-google-doc",
-        json={"jobId": job_id, "documentId": "some-doc-id"},
+        json={
+            "text": "Extracted text without documentId provided.",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["documentId"] == "1Fv5GiS0iK3KJOQSHQB5gbASmaHEMZTUZo2TC_Fx14Hk"
+
+
+def test_update_google_doc_empty_text_error(client):
+    response = client.post(
+        "/api/update-google-doc",
+        json={
+            "text": "   ",
+        },
     )
     assert response.status_code == 400
     data = response.json()
     assert data["success"] is False
-    assert data["error"]["code"] == "JOB_NOT_READY"
+    assert data["error"]["code"] == "EMPTY_TEXT"
 
 
-def test_update_google_doc_missing_job(client):
+def test_update_google_doc_api_not_found_error(client):
     response = client.post(
         "/api/update-google-doc",
-        json={"jobId": "invalid-job-id", "documentId": "some-doc-id"},
-    )
-    assert response.status_code == 404
-    data = response.json()
-    assert data["success"] is False
-    assert data["error"]["code"] == "JOB_NOT_FOUND"
-
-
-def test_update_google_doc_api_not_found_error(client, sample_image_bytes):
-    # Upload and process
-    upload_res = client.post(
-        "/api/upload",
-        files={"file": ("contract.png", sample_image_bytes, "image/png")},
-    )
-    job_id = upload_res.json()["jobId"]
-    client.post("/api/process", json={"jobId": job_id})
-
-    # Update with document ID that triggers 404 in mock
-    response = client.post(
-        "/api/update-google-doc",
-        json={"jobId": job_id, "documentId": "invalid-doc-id"},
+        json={
+            "documentId": "invalid-doc-id",
+            "text": "Valid text payload",
+        },
     )
     assert response.status_code == 404
     data = response.json()
@@ -70,19 +57,13 @@ def test_update_google_doc_api_not_found_error(client, sample_image_bytes):
     assert data["error"]["code"] == "DOCUMENT_NOT_FOUND"
 
 
-def test_update_google_doc_permission_denied(client, sample_image_bytes):
-    # Upload and process
-    upload_res = client.post(
-        "/api/upload",
-        files={"file": ("contract.png", sample_image_bytes, "image/png")},
-    )
-    job_id = upload_res.json()["jobId"]
-    client.post("/api/process", json={"jobId": job_id})
-
-    # Update with document ID that triggers 403 in mock
+def test_update_google_doc_permission_denied(client):
     response = client.post(
         "/api/update-google-doc",
-        json={"jobId": job_id, "documentId": "forbidden-doc-id"},
+        json={
+            "documentId": "forbidden-doc-id",
+            "text": "Valid text payload",
+        },
     )
     assert response.status_code == 403
     data = response.json()

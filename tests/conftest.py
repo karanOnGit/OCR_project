@@ -3,7 +3,6 @@ import os
 import shutil
 import tempfile
 import pytest
-from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -11,8 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import Settings, get_settings
 from app.core.database import Base, get_db
 from app.main import app
-from app.api.deps import get_ocr_service_dep, get_google_docs_service_dep
-from app.services.ocr_service import MockOCRService
+from app.api.deps import get_google_docs_service_dep
 from app.services.google_docs_service import MockGoogleDocsService
 
 
@@ -33,7 +31,6 @@ def test_settings(temp_dir):
         UPLOAD_DIR=test_upload_dir,
         MAX_FILE_SIZE_MB=2,
         DATABASE_URL=f"sqlite:///{temp_dir}/test_jobs.db",
-        OCR_ENGINE="mock",
     )
 
 
@@ -54,17 +51,12 @@ def db_session(test_settings):
 
 
 @pytest.fixture
-def mock_ocr():
-    return MockOCRService()
-
-
-@pytest.fixture
 def mock_google_docs():
     return MockGoogleDocsService()
 
 
 @pytest.fixture
-def client(db_session, test_settings, mock_ocr, mock_google_docs):
+def client(db_session, test_settings, mock_google_docs):
     def override_get_db():
         try:
             yield db_session
@@ -74,15 +66,11 @@ def client(db_session, test_settings, mock_ocr, mock_google_docs):
     def override_get_settings():
         return test_settings
 
-    def override_get_ocr():
-        return mock_ocr
-
     def override_get_google_docs():
         return mock_google_docs
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_settings] = override_get_settings
-    app.dependency_overrides[get_ocr_service_dep] = override_get_ocr
     app.dependency_overrides[get_google_docs_service_dep] = override_get_google_docs
 
     with TestClient(app) as test_client:
@@ -93,11 +81,5 @@ def client(db_session, test_settings, mock_ocr, mock_google_docs):
 
 @pytest.fixture
 def sample_image_bytes():
-    """Generates a small valid PNG image with text."""
-    image = Image.new("RGB", (200, 100), color=(255, 255, 255))
-    draw = ImageDraw.Draw(image)
-    draw.text((10, 40), "TEST OCR TEXT", fill=(0, 0, 0))
-    buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
-    buffer.seek(0)
-    return buffer.getvalue()
+    # Return valid PNG binary header
+    return b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
