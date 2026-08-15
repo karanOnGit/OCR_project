@@ -53,6 +53,20 @@ async def process_document(
         db.commit()
         db.refresh(job)
 
+        # Sync to Supabase if configured
+        try:
+            from app.core.supabase import get_supabase_client
+            supabase = get_supabase_client()
+            if supabase:
+                supabase.table("jobs").update({
+                    "status": "completed",
+                    "extracted_text": extracted_text,
+                    "updated_at": job.updated_at.isoformat(),
+                }).eq("id", job.id).execute()
+                logger.info(f"Updated job {job.id} status to 'completed' in Supabase")
+        except Exception as e:
+            logger.warning(f"Failed to sync completed job to Supabase: {e}")
+
         logger.info(f"Successfully processed OCR for job {job.id} (Extracted {len(extracted_text)} chars)")
 
         return ProcessResponse(
@@ -69,5 +83,18 @@ async def process_document(
         job.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(job)
+
+        # Sync failure to Supabase
+        try:
+            from app.core.supabase import get_supabase_client
+            supabase = get_supabase_client()
+            if supabase:
+                supabase.table("jobs").update({
+                    "status": "failed",
+                    "error": str(e),
+                    "updated_at": job.updated_at.isoformat(),
+                }).eq("id", job.id).execute()
+        except Exception:
+            pass
 
         raise OCRProcessingException(f"OCR processing failed: {str(e)}") from e

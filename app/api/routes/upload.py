@@ -40,6 +40,24 @@ async def upload_image(
     db.commit()
     db.refresh(job)
 
+    # Sync to Supabase if configured
+    try:
+        from app.core.supabase import get_supabase_client
+        supabase = get_supabase_client()
+        if supabase:
+            supabase.table("jobs").upsert({
+                "id": job.id,
+                "original_filename": job.original_filename,
+                "image_path": job.image_path,
+                "file_size": job.file_size,
+                "status": job.status.value,
+                "extracted_text": None,
+                "error": None,
+            }).execute()
+            logger.info(f"Synced new job {job.id} to Supabase")
+    except Exception as e:
+        logger.warning(f"Failed to sync job {job.id} to Supabase: {e}")
+
     logger.info(f"Created job {job.id} for file {file.filename} ({file_size} bytes)")
 
     return UploadResponse(
