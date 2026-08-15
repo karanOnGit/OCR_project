@@ -29,38 +29,39 @@ class GoogleDocsService(BaseGoogleDocsService):
         self.settings = settings or get_settings()
 
     def _get_credentials(self):
-        """Load Google credentials from service account or OAuth configuration."""
-        # Check for service account credentials (filepath, raw JSON string, or Base64 JSON)
+        """Load Google credentials from service account JSON, base64, file, or default credentials."""
         if self.settings.GOOGLE_APPLICATION_CREDENTIALS:
             cred_val = self.settings.GOOGLE_APPLICATION_CREDENTIALS.strip()
             
-            # Check if Base64 encoded JSON string
-            if not cred_val.startswith("{") and not cred_val.endswith(".json") and len(cred_val) > 100:
-                try:
-                    import base64
-                    decoded = base64.b64decode(cred_val).decode("utf-8")
-                    if decoded.startswith("{"):
-                        cred_val = decoded
-                except Exception:
-                    pass
-
-            # Check if JSON string directly
-            if cred_val.startswith("{") and cred_val.endswith("}"):
+            # 1. Try parsing direct JSON string
+            if "{" in cred_val and "}" in cred_val:
                 try:
                     import json
                     info = json.loads(cred_val)
-                    return service_account.Credentials.from_service_account_info(
-                        info,
-                        scopes=SCOPES,
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to parse GOOGLE_APPLICATION_CREDENTIALS JSON string: {e}")
-                    raise GoogleDocsException(
-                        f"Failed to parse Google credentials JSON: {str(e)}",
-                        code="GOOGLE_AUTH_ERROR",
-                    ) from e
+                    if isinstance(info, dict) and "private_key" in info:
+                        return service_account.Credentials.from_service_account_info(
+                            info,
+                            scopes=SCOPES,
+                        )
+                except Exception:
+                    pass
 
-            # Check if file path
+            # 2. Try parsing Base64 encoded JSON
+            if len(cred_val) > 100:
+                try:
+                    import base64
+                    import json
+                    decoded_bytes = base64.b64decode(cred_val)
+                    info = json.loads(decoded_bytes.decode("utf-8"))
+                    if isinstance(info, dict) and "private_key" in info:
+                        return service_account.Credentials.from_service_account_info(
+                            info,
+                            scopes=SCOPES,
+                        )
+                except Exception:
+                    pass
+
+            # 3. Try resolving as file path
             cred_path = Path(cred_val)
             if not cred_path.is_absolute():
                 cred_path = Path.cwd() / cred_val
@@ -72,7 +73,7 @@ class GoogleDocsService(BaseGoogleDocsService):
                         scopes=SCOPES,
                     )
                 except Exception as e:
-                    logger.error(f"Failed to load service account credentials from {cred_path}: {e}")
+                    logger.error(f"Failed to load service account credentials from file {cred_path}: {e}")
                     raise GoogleDocsException(
                         f"Failed to load Google credentials file: {str(e)}",
                         code="GOOGLE_AUTH_ERROR",
