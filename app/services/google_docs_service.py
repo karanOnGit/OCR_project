@@ -93,8 +93,30 @@ class GoogleDocsService(BaseGoogleDocsService):
                 status_code=400,
             ) from e
 
+    def clean_document_id(self, doc_input: Optional[str]) -> str:
+        """Extract clean document ID from URL or raw ID, falling back to default."""
+        if not doc_input or not doc_input.strip():
+            doc_input = self.settings.DEFAULT_GOOGLE_DOC_ID
+
+        doc_input = doc_input.strip()
+        # Handle full Google Docs URL: https://docs.google.com/document/d/<ID>/edit...
+        if "/document/d/" in doc_input:
+            import re
+            match = re.search(r"/document/d/([a-zA-Z0-9-_]+)", doc_input)
+            if match:
+                return match.group(1)
+        return doc_input
+
     def _sync_insert_text(self, document_id: str, text: str) -> Dict[str, Any]:
         """Synchronous Google Docs API call to insert text at the end of a document."""
+        clean_doc_id = self.clean_document_id(document_id)
+        if not clean_doc_id:
+            raise GoogleDocsException(
+                "Google Document ID is required. Please provide a documentId or set DEFAULT_GOOGLE_DOC_ID in .env",
+                code="DOCUMENT_ID_REQUIRED",
+                status_code=400,
+            )
+
         try:
             from googleapiclient.discovery import build
             from googleapiclient.errors import HttpError
@@ -107,7 +129,7 @@ class GoogleDocsService(BaseGoogleDocsService):
             service = build("docs", "v1", credentials=credentials, cache_discovery=False)
             
             # First, fetch document metadata to get end index or verify existence
-            doc = service.documents().get(documentId=document_id).execute()
+            doc = service.documents().get(documentId=clean_doc_id).execute()
             
             # Prepare text to append
             content_to_insert = f"\n\n--- Extracted Document Text ---\n{text}\n"
@@ -131,12 +153,12 @@ class GoogleDocsService(BaseGoogleDocsService):
 
             result = (
                 service.documents()
-                .batchUpdate(documentId=document_id, body={"requests": requests})
+                .batchUpdate(documentId=clean_doc_id, body={"requests": requests})
                 .execute()
             )
 
             return {
-                "documentId": document_id,
+                "documentId": clean_doc_id,
                 "title": doc.get("title", ""),
                 "replies": result.get("replies", []),
             }
@@ -148,13 +170,13 @@ class GoogleDocsService(BaseGoogleDocsService):
             
             if status_code == 404:
                 raise GoogleDocsException(
-                    f"Google Document '{document_id}' not found or access denied.",
+                    f"Google Document '{clean_doc_id}' not found or access denied.",
                     status_code=404,
                     code="DOCUMENT_NOT_FOUND",
                 )
             elif status_code == 403:
                 raise GoogleDocsException(
-                    f"Permission denied for Google Document '{document_id}'. Share the doc with the service account email.",
+                    f"Permission denied for Google Document '{clean_doc_id}'. Share the doc with the service account email.",
                     status_code=403,
                     code="GOOGLE_PERMISSION_DENIED",
                 )
@@ -177,7 +199,19 @@ class GoogleDocsService(BaseGoogleDocsService):
 
 class MockGoogleDocsService(BaseGoogleDocsService):
     """Mock service for testing Google Docs integration without real API calls."""
+    def __init__(self, settings: Optional[Settings] = None):
+        self.settings = settings or get_settings()
+
     async def update_document(self, document_id: str, text: str) -> Dict[str, Any]:
+        if not document_id:
+            document_id = self.settings.DEFAULT_GOOGLE_DOC_ID
+
+        if "/document/d/" in document_id:
+            import re
+            match = re.search(r"/document/d/([a-zA-Z0-9-_]+)", document_id)
+            if match:
+                document_id = match.group(1)
+
         if document_id == "invalid-doc-id":
             raise GoogleDocsException(
                 f"Google Document '{document_id}' not found",

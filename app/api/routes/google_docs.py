@@ -40,15 +40,21 @@ async def update_google_doc(
         )
 
     # 3. Call Google Docs Service
-    logger.info(f"Updating Google Doc '{request.documentId}' with text from job {job.id}")
-    await google_docs_service.update_document(
-        document_id=request.documentId,
+    from app.core.config import get_settings
+    settings = get_settings()
+    doc_id = request.documentId or settings.DEFAULT_GOOGLE_DOC_ID
+
+    logger.info(f"Updating Google Doc '{doc_id}' with text from job {job.id}")
+    result = await google_docs_service.update_document(
+        document_id=doc_id,
         text=job.extracted_text,
     )
+
+    resolved_id = result.get("documentId", doc_id)
 
     return GoogleDocsResponse(
         success=True,
         jobId=job.id,
-        documentId=request.documentId,
+        documentId=resolved_id,
         message="Document updated successfully",
     )

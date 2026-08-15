@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = ""
     GOOGLE_CLIENT_SECRETS_FILE: str = ""
+    DEFAULT_GOOGLE_DOC_ID: str = "1Fv5GiS0iK3KJOQSHQB5gbASmaHEMZTUZo2TC_Fx14Hk"
 
     # CORS Settings
     CORS_ORIGINS: List[str] = ["*"]

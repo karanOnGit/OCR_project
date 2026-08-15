@@ -194,23 +194,27 @@ async def upload_batch(
                 )
             )
 
-    # 4. Sequentially append all texts to Google Docs if documentId provided
-    if documentId and all_extracted_texts:
+    # 4. Sequentially append all texts to Google Docs
+    from app.core.config import get_settings
+    settings = get_settings()
+    target_doc_id = documentId if documentId and documentId.strip() else settings.DEFAULT_GOOGLE_DOC_ID
+
+    if target_doc_id and all_extracted_texts:
         try:
             combined_content = "\n\n".join(all_extracted_texts)
             await google_docs_service.update_document(
-                document_id=documentId,
+                document_id=target_doc_id,
                 text=combined_content,
             )
-            logger.info(f"Successfully appended batch text ({len(all_extracted_texts)} items) to Google Doc {documentId}")
+            logger.info(f"Successfully appended batch text ({len(all_extracted_texts)} items) to Google Doc {target_doc_id}")
         except Exception as gdoc_err:
-            logger.error(f"Failed to update Google Doc {documentId}: {gdoc_err}")
+            logger.error(f"Failed to update Google Doc {target_doc_id}: {gdoc_err}")
 
     return BatchProcessResponse(
         success=True,
         total=len(files),
         completed=completed_count,
-        documentId=documentId,
+        documentId=target_doc_id,
         jobs=batch_jobs,
         message=f"{completed_count} of {len(files)} documents processed successfully",
     )
