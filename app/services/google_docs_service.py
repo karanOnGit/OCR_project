@@ -30,10 +30,20 @@ class GoogleDocsService(BaseGoogleDocsService):
 
     def _get_credentials(self):
         """Load Google credentials from service account or OAuth configuration."""
-        # Check for service account credentials (filepath or raw JSON string)
+        # Check for service account credentials (filepath, raw JSON string, or Base64 JSON)
         if self.settings.GOOGLE_APPLICATION_CREDENTIALS:
             cred_val = self.settings.GOOGLE_APPLICATION_CREDENTIALS.strip()
             
+            # Check if Base64 encoded JSON string
+            if not cred_val.startswith("{") and not cred_val.endswith(".json") and len(cred_val) > 100:
+                try:
+                    import base64
+                    decoded = base64.b64decode(cred_val).decode("utf-8")
+                    if decoded.startswith("{"):
+                        cred_val = decoded
+                except Exception:
+                    pass
+
             # Check if JSON string directly
             if cred_val.startswith("{") and cred_val.endswith("}"):
                 try:
