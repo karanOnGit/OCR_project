@@ -1,7 +1,10 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Dict, Any, Optional
+from google.oauth2 import service_account
+from google.auth.exceptions import DefaultCredentialsError
 
 from app.core.config import Settings, get_settings
 from app.core.errors import GoogleDocsException
@@ -27,22 +30,45 @@ class GoogleDocsService(BaseGoogleDocsService):
 
     def _get_credentials(self):
         """Load Google credentials from service account or OAuth configuration."""
-        from google.oauth2 import service_account
-        from google.auth.exceptions import DefaultCredentialsError
-
-        # Check for service account credentials file
+        # Check for service account credentials (filepath or raw JSON string)
         if self.settings.GOOGLE_APPLICATION_CREDENTIALS:
-            try:
-                return service_account.Credentials.from_service_account_file(
-                    self.settings.GOOGLE_APPLICATION_CREDENTIALS,
-                    scopes=SCOPES,
-                )
-            except Exception as e:
-                logger.error(f"Failed to load service account credentials: {e}")
-                raise GoogleDocsException(
-                    f"Failed to load Google credentials file: {str(e)}",
-                    code="GOOGLE_AUTH_ERROR",
-                ) from e
+            cred_val = self.settings.GOOGLE_APPLICATION_CREDENTIALS.strip()
+            
+            # Check if JSON string directly
+            if cred_val.startswith("{") and cred_val.endswith("}"):
+                try:
+                    import json
+                    info = json.loads(cred_val)
+                    return service_account.Credentials.from_service_account_info(
+                        info,
+                        scopes=SCOPES,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to parse GOOGLE_APPLICATION_CREDENTIALS JSON string: {e}")
+                    raise GoogleDocsException(
+                        f"Failed to parse Google credentials JSON: {str(e)}",
+                        code="GOOGLE_AUTH_ERROR",
+                    ) from e
+
+            # Check if file path
+            cred_path = Path(cred_val)
+            if not cred_path.is_absolute():
+                cred_path = Path.cwd() / cred_val
+
+            if cred_path.exists() and cred_path.is_file():
+                try:
+                    return service_account.Credentials.from_service_account_file(
+                        str(cred_path),
+                        scopes=SCOPES,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to load service account credentials from {cred_path}: {e}")
+                    raise GoogleDocsException(
+                        f"Failed to load Google credentials file: {str(e)}",
+                        code="GOOGLE_AUTH_ERROR",
+                    ) from e
+            else:
+                logger.warning(f"Google credentials file not found at: {cred_path}")
 
         # If not provided, try default credentials
         try:
